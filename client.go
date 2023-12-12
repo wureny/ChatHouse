@@ -23,6 +23,7 @@ type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
 	//消息格式为：发送者用户名+发送时间+消息内容
+	//对消息长度应该有限制
 	send chan []byte
 }
 
