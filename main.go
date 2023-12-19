@@ -1,6 +1,8 @@
 package main
 
-import "flag"
+import (
+	"flag"
+)
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
 
