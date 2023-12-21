@@ -16,10 +16,10 @@ type Hub struct {
 	// 广播消息缓冲区大小为256
 	//另外设置定时器，每隔一段时间清空缓冲区
 	//或者超出时清空缓冲区
-	broadcast chan []string
+	broadcast chan []byte
 
 	bufferMutex sync.Mutex
-	buffer      []string
+	buffer      []Msg
 	register    chan *Client
 	unregister  chan *Client
 
@@ -34,10 +34,10 @@ func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 		clientMutex: sync.Mutex{},
 		clients:     make(map[*Client]bool),
 
-		broadcast: make(chan []string),
+		broadcast: make(chan []byte),
 
 		bufferMutex: sync.Mutex{},
-		buffer:      make([]string, 0, bufferofbroadcast),
+		buffer:      make([]Msg, 0, bufferofbroadcast),
 
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
@@ -66,17 +66,18 @@ func (h *Hub) run() {
 	go func() {
 		for {
 			if len(h.buffer) >= CAPOFBUFFER {
+				//将h中的内容mashal为[]byte，批量发送给clients
 				for client := range h.clients {
-					select {
-					case client.send <- []byte(h.buffer[0]):
-						h.buffer = h.buffer[1:]
-					default:
-						close(client.send)
-						delete(h.clients, client)
+					for _, v := range h.buffer {
+						msg, err := v.MarshalMsg([]byte{})
+						if err != nil {
+							break
+						}
+						client.send <- msg
 					}
 				}
 			}
-			time.Sleep(3 * time.Second)
+			//time.Sleep(3 * time.Second)
 		}
 	}()
 	//检查每个用户的lastmsgsent是否在15分钟之内，否则断开连接
@@ -99,18 +100,16 @@ func (h *Hub) run() {
 	}()
 	//每隔两秒钟将buffer中的消息发送给所有的clients
 	go func() {
-		for {
-			for client := range h.clients {
-				select {
-				case client.send <- []byte(h.buffer[0]):
-					h.buffer = h.buffer[1:]
-				default:
-					close(client.send)
-					delete(h.clients, client)
+		for client := range h.clients {
+			for _, v := range h.buffer {
+				msg, err := v.MarshalMsg([]byte{})
+				if err != nil {
+					break
 				}
+				client.send <- msg
 			}
-			time.Sleep(2 * time.Second)
 		}
+		time.Sleep(2 * time.Second)
 	}()
 	//heartbeatTicker := time.NewTicker(15 * time.Second)
 	for {
@@ -131,7 +130,7 @@ func (h *Hub) run() {
 				}
 				close(client.send)
 			}
-			//定时器定时触发websocket ping/pong检测
+		//定时器定时触发websocket ping/pong检测
 		/*case <-heartbeatTicker.C:
 		for client := range h.clients {
 			select {
@@ -144,23 +143,30 @@ func (h *Hub) run() {
 		//TODO：数据格式问题
 		//TODO: 更新发送消息的client的lastmsgsent
 		case message := <-h.broadcast:
+			msg := Msg{addr: "", time: time.Now().String(), content: string(message)}
+			_, err := (&msg).UnmarshalMsg(message)
+			if err != nil {
+				break
+			}
 			go func() {
 				for i, v := range h.allclients {
-					if v.addr == message[0] {
+					if v.addr == msg.addr {
 						h.allclients[i].lastmesgsent = time.Now()
 						break
 					}
 				}
 			}()
+			//TODO：限流
 			//检查buffer是否已满，没满便加入buffer缓存
-			if len(h.buffer)+len(message[0]+message[1]+message[2]) <= cap(h.buffer) {
-				h.buffer = append(h.buffer, message[0]+message[1]+message[2])
+			if len(h.buffer)+1 <= CAPOFBUFFER {
+				h.buffer = append(h.buffer, msg)
 			} else {
 				time.Sleep(3 * time.Second)
 			}
-			if len(h.buffer)+len(message[0]+message[1]+message[2]) <= cap(h.buffer) {
-				h.buffer = append(h.buffer, message[0]+message[1]+message[2])
+			if len(h.buffer)+1 <= CAPOFBUFFER {
+				h.buffer = append(h.buffer, msg)
 			}
+
 		}
 	}
 }
