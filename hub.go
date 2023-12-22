@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"golang.org/x/time/rate"
 	"sync"
 	"time"
 )
@@ -48,6 +50,8 @@ func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 }
 
 func (h *Hub) run() {
+	limiter := rate.NewLimiter(350, 350*3)
+	ctx := context.Background()
 	h.clientsMutex.Lock()
 	defer h.clientsMutex.Unlock()
 	h.bufferMutex.Lock()
@@ -143,7 +147,6 @@ func (h *Hub) run() {
 			}
 		}*/
 		//TODO：数据格式问题
-		//TODO: 更新发送消息的client的lastmsgsent
 		case message := <-h.broadcast:
 			msg := Msg{addr: "", time: time.Now().String(), content: string(message)}
 			_, err := (&msg).UnmarshalMsg(message)
@@ -159,6 +162,13 @@ func (h *Hub) run() {
 				}
 			}()
 			//TODO：限流
+			e := limiter.Wait(ctx)
+			if e != nil {
+				time.Sleep(1 * time.Second)
+			}
+			if e != nil {
+				break
+			}
 			//检查buffer是否已满，没满便加入buffer缓存
 			if len(h.buffer)+1 <= CAPOFBUFFER {
 				h.buffer = append(h.buffer, msg)
