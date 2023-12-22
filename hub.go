@@ -115,8 +115,10 @@ func (h *Hub) run() {
 	for {
 		select {
 		//TODO：处理最大连接数
-		//TODO：处理重复连接
 		case client := <-h.register:
+			if h.clients[client] == true {
+				break
+			}
 			h.clients[client] = true
 			h.allclients = append(h.allclients, clientinfo{client.conn.RemoteAddr().String(), time.Now()})
 		case client := <-h.unregister:
