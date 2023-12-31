@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	github.com/go-playground/assert/v2 v2.2.0 // indirect
 	github.com/philhofer/fwd v1.1.2 // indirect
 	golang.org/x/net v0.17.0 // indirect
 )
